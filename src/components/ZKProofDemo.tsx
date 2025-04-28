@@ -50,7 +50,9 @@ const ZKProofDemo = () => {
       </h3>
       
       <Tabs defaultValue="age" className="space-y-4" onValueChange={(value) => {
-        setActiveTab(value);
+        // Make sure the value is a valid ProofType before setting it
+        const newValue = value as ProofType;
+        setActiveTab(newValue);
         resetVerification();
       }}>
         <TabsList className="grid grid-cols-3">
