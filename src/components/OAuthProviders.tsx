@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Link2, ExternalLink } from "lucide-react";
@@ -21,24 +20,6 @@ const OAuthProviders = () => {
       name: "Google",
       icon: "G",
       color: "bg-white text-black",
-    },
-    {
-      id: "github",
-      name: "GitHub",
-      icon: "GH",
-      color: "bg-gray-800 text-white",
-    },
-    {
-      id: "twitter",
-      name: "Twitter",
-      icon: "X",
-      color: "bg-black text-white",
-    },
-    {
-      id: "discord",
-      name: "Discord",
-      icon: "D",
-      color: "bg-indigo-600 text-white",
     }
   ];
   
@@ -71,14 +52,14 @@ const OAuthProviders = () => {
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Link2 className="h-5 w-5" /> OAuth Providers
+        <Link2 className="h-5 w-5" /> OAuth Provider
       </h3>
       
       <p className="text-sm text-muted-foreground mb-4">
-        Connect your existing OAuth providers for seamless authentication.
+        Connect with Google for seamless authentication.
       </p>
       
-      <div className="grid grid-cols-2 gap-3">
+      <div className="flex justify-center">
         {providers.map((provider) => {
           const isConnected = connectedProviders.includes(provider.id);
           const isAuthenticating = authenticating === provider.id;
@@ -87,7 +68,7 @@ const OAuthProviders = () => {
             <Button
               key={provider.id}
               variant={isConnected ? "default" : "outline"}
-              className={`justify-start gap-3 ${isConnected ? "bg-muted hover:bg-muted/80" : ""}`}
+              className={`justify-start gap-3 w-full max-w-sm ${isConnected ? "bg-muted hover:bg-muted/80" : ""}`}
               onClick={() => handleConnect(provider.id)}
               disabled={isAuthenticating}
             >
