@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Link2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,15 @@ const OAuthProviders = () => {
       color: "bg-white text-black",
     }
   ];
+
+  // Notify the dashboard when connection status changes
+  useEffect(() => {
+    const isConnected = connectedProviders.length > 0;
+    const event = new CustomEvent("oauth-status-change", { 
+      detail: { connected: isConnected } 
+    });
+    window.dispatchEvent(event);
+  }, [connectedProviders]);
   
   const handleConnect = async (providerId: string) => {
     if (connectedProviders.includes(providerId)) {

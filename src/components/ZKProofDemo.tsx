@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, CheckCircle2, XCircle } from "lucide-react";
@@ -11,6 +12,14 @@ const ZKProofDemo = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<ProofType>("age");
+  
+  // Notify the dashboard when the proof verification status changes
+  useEffect(() => {
+    const event = new CustomEvent("zkproof-status-change", {
+      detail: { verified: verificationResult === true }
+    });
+    window.dispatchEvent(event);
+  }, [verificationResult]);
   
   const handleProofVerification = async () => {
     if (!walletAddress) {

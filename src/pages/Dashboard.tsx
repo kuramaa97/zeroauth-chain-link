@@ -13,6 +13,27 @@ import Navbar from "@/components/Navbar";
 const Dashboard = () => {
   const { walletAddress, isAuthenticated } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState("Not Connected");
+  const [zkProofStatus, setZkProofStatus] = useState("Not Verified");
+
+  // Event listeners for authentication events
+  useEffect(() => {
+    const handleOauthChange = (event: CustomEvent) => {
+      setOauthStatus(event.detail.connected ? "Connected" : "Not Connected");
+    };
+
+    const handleZkProofChange = (event: CustomEvent) => {
+      setZkProofStatus(event.detail.verified ? "Verified" : "Not Verified");
+    };
+
+    window.addEventListener("oauth-status-change" as any, handleOauthChange);
+    window.addEventListener("zkproof-status-change" as any, handleZkProofChange);
+
+    return () => {
+      window.removeEventListener("oauth-status-change" as any, handleOauthChange);
+      window.removeEventListener("zkproof-status-change" as any, handleZkProofChange);
+    };
+  }, []);
 
   useEffect(() => {
     // Simulate loading state
@@ -108,7 +129,11 @@ const Dashboard = () => {
                       ZK Proofs
                     </div>
                     <div className="font-semibold">
-                      <span className="text-amber-500">Not Verified</span>
+                      {zkProofStatus === "Verified" ? (
+                        <span className="text-green-500">{zkProofStatus}</span>
+                      ) : (
+                        <span className="text-amber-500">{zkProofStatus}</span>
+                      )}
                     </div>
                   </div>
                   
@@ -117,7 +142,11 @@ const Dashboard = () => {
                       OAuth Status
                     </div>
                     <div className="font-semibold">
-                      <span className="text-amber-500">Not Connected</span>
+                      {oauthStatus === "Connected" ? (
+                        <span className="text-green-500">{oauthStatus}</span>
+                      ) : (
+                        <span className="text-amber-500">{oauthStatus}</span>
+                      )}
                     </div>
                   </div>
                 </div>
