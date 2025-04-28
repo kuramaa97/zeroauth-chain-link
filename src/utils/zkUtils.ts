@@ -3,8 +3,8 @@
 
 // In a real application, this would use actual ZK libraries like snarkjs or circom
 
-// Simulated supported proof types
-type ProofType = 'age' | 'credit' | 'identity';
+// Export the ProofType so it can be used in other files
+export type ProofType = 'age' | 'credit' | 'identity';
 
 /**
  * Simulates generating a zero-knowledge proof

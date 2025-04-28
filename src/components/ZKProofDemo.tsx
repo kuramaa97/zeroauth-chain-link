@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { verifyZKProof } from "@/utils/zkUtils";
+import { verifyZKProof, ProofType } from "@/utils/zkUtils";
 import { toast } from "sonner";
 
 const ZKProofDemo = () => {
   const { walletAddress } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState("age");
+  const [activeTab, setActiveTab] = useState<ProofType>("age");
   
   const handleProofVerification = async () => {
     if (!walletAddress) {

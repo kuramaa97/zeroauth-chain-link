@@ -8,7 +8,7 @@ interface AuthContextType {
   isConnecting: boolean;
   isAuthenticated: boolean;
   hasWallet: boolean;
-  connectWallet: () => Promise<void>;
+  connectWallet: () => Promise<string>; // Updated to match implementation
   disconnectWallet: () => void;
 }
 
@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   isConnecting: false,
   isAuthenticated: false,
   hasWallet: false,
-  connectWallet: async () => {},
+  connectWallet: async () => "", // Updated to return a string
   disconnectWallet: () => {},
 });
 
