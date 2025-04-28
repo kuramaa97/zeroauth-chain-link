@@ -22,10 +22,23 @@ const WalletConnect = () => {
             setGoogleConnected(true);
             setOauthToken(parsed.idToken);
             setUserId(parsed.sub);
+          } else {
+            // Token expired or invalid
+            setGoogleConnected(false);
+            setOauthToken(null);
+            setUserId(null);
           }
+        } else {
+          // No token found
+          setGoogleConnected(false);
+          setOauthToken(null);
+          setUserId(null);
         }
       } catch (e) {
         console.error("Error checking Google connection:", e);
+        setGoogleConnected(false);
+        setOauthToken(null);
+        setUserId(null);
       }
     };
 
@@ -33,13 +46,27 @@ const WalletConnect = () => {
     
     // Listen for OAuth status changes
     const handleOAuthChange = (event: CustomEvent) => {
-      if (event.detail && event.detail.connected) {
-        checkGoogleConnection();
+      if (event.detail) {
+        if (event.detail.connected) {
+          checkGoogleConnection();
+        } else {
+          // Handle disconnect event
+          setGoogleConnected(false);
+          setOauthToken(null);
+          setUserId(null);
+        }
       }
     };
 
     window.addEventListener("oauth-status-change", handleOAuthChange as EventListener);
-    return () => window.removeEventListener("oauth-status-change", handleOAuthChange as EventListener);
+    
+    // Check connection status periodically to handle token expiration
+    const intervalId = setInterval(checkGoogleConnection, 30000);
+    
+    return () => {
+      window.removeEventListener("oauth-status-change", handleOAuthChange as EventListener);
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleCreateIdentity = async () => {
