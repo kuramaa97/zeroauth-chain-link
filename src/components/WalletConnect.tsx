@@ -1,35 +1,73 @@
-// Update component name to IdentityConnect
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Wallet, Copy, CheckCircle, Shield } from "lucide-react";
+import { Copy, CheckCircle, Shield, Key } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
 const WalletConnect = () => {
-  const { connectWallet, disconnectWallet, walletAddress, isConnecting, generateWalletFromToken } = useAuth();
+  const { disconnectWallet, walletAddress, isConnecting, generateWalletFromToken } = useAuth();
   const [hasCopied, setHasCopied] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [oauthToken, setOauthToken] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const handleConnect = async () => {
+  // Check if Google is connected
+  useEffect(() => {
+    const checkGoogleConnection = () => {
+      try {
+        const tokenData = localStorage.getItem('oauth_token');
+        if (tokenData) {
+          const parsed = JSON.parse(tokenData);
+          if (parsed.provider === "google" && parsed.expiresAt > Date.now()) {
+            setGoogleConnected(true);
+            setOauthToken(parsed.idToken);
+            setUserId(parsed.sub);
+          }
+        }
+      } catch (e) {
+        console.error("Error checking Google connection:", e);
+      }
+    };
+
+    checkGoogleConnection();
+    
+    // Listen for OAuth status changes
+    const handleOAuthChange = (event: CustomEvent) => {
+      if (event.detail && event.detail.connected) {
+        checkGoogleConnection();
+      }
+    };
+
+    window.addEventListener("oauth-status-change", handleOAuthChange as EventListener);
+    return () => window.removeEventListener("oauth-status-change", handleOAuthChange as EventListener);
+  }, []);
+
+  const handleCreateIdentity = async () => {
+    if (!oauthToken || !userId) {
+      toast.error("Google authentication required");
+      return;
+    }
+
     try {
-      await connectWallet();
-      toast.success("Identity connected successfully");
+      await generateWalletFromToken(oauthToken, userId);
+      toast.success("Secure identity created successfully");
     } catch (error) {
-      toast.error("Failed to connect identity. Please try again.");
-      console.error("Identity connection error:", error);
+      console.error("Identity creation error:", error);
+      toast.error("Failed to create identity. Please try again.");
     }
   };
 
   const handleDemoMode = async () => {
     try {
-      // Generate a demo token with fixed values
+      // Generate a demo token with fixed values for consistent demo identity
       const demoToken = "demo_jwt_token_for_testing_purposes_only";
       const demoUserId = "demo_user_123";
       
       await generateWalletFromToken(demoToken, demoUserId);
       toast.success("Demo identity created successfully");
     } catch (error) {
-      toast.error("Failed to create demo identity. Please try again.");
       console.error("Demo identity creation error:", error);
+      toast.error("Failed to create demo identity. Please try again.");
     }
   };
 
@@ -43,6 +81,19 @@ const WalletConnect = () => {
     setTimeout(() => {
       setHasCopied(false);
     }, 2000);
+  };
+
+  // Check if identity was created via OAuth
+  const isOAuthIdentity = () => {
+    try {
+      const zkpData = localStorage.getItem("zkp_credentials");
+      if (!zkpData) return false;
+      
+      const parsed = JSON.parse(atob(zkpData));
+      return parsed.provider === "google";
+    } catch (e) {
+      return false;
+    }
   };
 
   return (
@@ -71,7 +122,7 @@ const WalletConnect = () => {
             </Button>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <Button
               variant="outline"
               className="w-full"
@@ -87,11 +138,11 @@ const WalletConnect = () => {
             Create a secure zero-knowledge identity for blockchain authentication.
           </p>
           
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <Button
               className="w-full"
-              onClick={handleConnect}
-              disabled={isConnecting}
+              onClick={handleCreateIdentity}
+              disabled={!googleConnected || isConnecting}
             >
               {isConnecting ? "Creating..." : "Create Identity"}
             </Button>
@@ -102,6 +153,7 @@ const WalletConnect = () => {
               onClick={handleDemoMode}
               disabled={isConnecting}
             >
+              <Key className="h-4 w-4 mr-2" />
               Demo Mode
             </Button>
           </div>

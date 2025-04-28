@@ -1,17 +1,14 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { verifyZKProof, ProofType, ProofTypeSchema } from "@/utils/zkUtils";
+import { verifyZKProof } from "@/utils/zkUtils";
 import { toast } from "sonner";
 
 const ZKProofDemo = () => {
   const { walletAddress } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<ProofType>("age");
   
   // Notify the dashboard when the proof verification status changes
   useEffect(() => {
@@ -30,15 +27,13 @@ const ZKProofDemo = () => {
     setIsVerifying(true);
     
     try {
-      const validProofType = ProofTypeSchema.parse(activeTab);
-      
-      const result = await verifyZKProof(walletAddress, validProofType);
+      const result = await verifyZKProof(walletAddress, "identity");
       setVerificationResult(result);
       
       if (result) {
-        toast.success(`Zero-knowledge proof verified successfully`);
+        toast.success(`Zero-knowledge identity proof verified successfully`);
       } else {
-        toast.error(`Failed to verify zero-knowledge proof`);
+        toast.error(`Failed to verify zero-knowledge identity proof`);
       }
     } catch (error) {
       console.error("ZK verification error:", error);
@@ -53,55 +48,19 @@ const ZKProofDemo = () => {
     setVerificationResult(null);
   };
 
-  const handleTabChange = (value: string) => {
-    try {
-      const newValue = ProofTypeSchema.parse(value);
-      setActiveTab(newValue);
-      resetVerification();
-    } catch (error) {
-      console.error("Invalid proof type:", error);
-      setActiveTab("age");
-    }
-  };
-
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
         <Shield className="h-5 w-5" /> Zero-Knowledge Verification
       </h3>
       
-      <Tabs 
-        defaultValue="age" 
-        className="space-y-4" 
-        onValueChange={handleTabChange}
-      >
-        <TabsList className="grid grid-cols-3">
-          <TabsTrigger value="age">Age Proof</TabsTrigger>
-          <TabsTrigger value="credit">Credit Score</TabsTrigger>
-          <TabsTrigger value="identity">Identity</TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Verify your identity without exposing personal identification documents.
+        </p>
         
-        <TabsContent value="age" className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Verify you are over 18 without revealing your exact date of birth.
-          </p>
-          {renderVerificationUI()}
-        </TabsContent>
-        
-        <TabsContent value="credit" className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Prove your credit score meets requirements without revealing the exact score.
-          </p>
-          {renderVerificationUI()}
-        </TabsContent>
-        
-        <TabsContent value="identity" className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Verify your identity without exposing personal identification documents.
-          </p>
-          {renderVerificationUI()}
-        </TabsContent>
-      </Tabs>
+        {renderVerificationUI()}
+      </div>
     </div>
   );
   
