@@ -90,12 +90,12 @@ const OAuthProviders = () => {
     // Save current URL for redirect back after authentication
     localStorage.setItem('oauth_redirect', window.location.href);
   
-    // Configure OAuth parameters - using just openid scope
+    // Configure OAuth parameters - include profile and email for user info
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       redirect_uri: `${window.location.origin}/oauth-callback`,
       response_type: 'token id_token',
-      scope: 'openid', // Using only openid scope as requested
+      scope: 'openid email profile', // Request more user info
       nonce: nonce,
       prompt: 'consent',
     });
@@ -114,9 +114,13 @@ const OAuthProviders = () => {
       
       setTimeout(() => {
         localStorage.removeItem('oauth_token');
+        localStorage.removeItem('user_info');
         setConnectedProviders(prev => prev.filter(id => id !== providerId));
         setAuthenticating(null);
-        toast.success(`Disconnected from ${providerId} successfully`);
+        toast.success(`Logged out from ${providerId} successfully`);
+        
+        // Refresh page to clear all states
+        window.location.href = '/';
       }, 500);
       
       return;
@@ -133,11 +137,13 @@ const OAuthProviders = () => {
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Link2 className="h-5 w-5" /> OAuth Provider
+        <Link2 className="h-5 w-5" /> Authentication
       </h3>
       
       <p className="text-sm text-muted-foreground mb-4">
-        Connect with Google for secure authentication using OpenID.
+        {connectedProviders.length > 0 
+          ? "You are currently authenticated with Google." 
+          : "Sign in with Google to access your wallet and blockchain features."}
       </p>
       
       <div className="flex justify-center">
@@ -163,9 +169,9 @@ const OAuthProviders = () => {
                 {isAuthenticating ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : isConnected ? (
-                  "Connected"
+                  "Sign Out"
                 ) : (
-                  <ExternalLink className="h-3 w-3" />
+                  "Sign In"
                 )}
               </span>
             </Button>

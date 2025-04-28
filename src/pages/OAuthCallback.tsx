@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/context/AuthContext"; // Import the auth context
+import { useAuth } from "@/context/AuthContext";
 
 const OAuthCallback = () => {
   const [status, setStatus] = useState("Processing authentication response...");
   const navigate = useNavigate();
-  const { generateWalletFromToken } = useAuth(); // Get the function from auth context
+  const { generateWalletFromToken } = useAuth();
 
   useEffect(() => {
     const processOAuthResponse = async () => {
@@ -41,17 +41,25 @@ const OAuthCallback = () => {
           return;
         }
 
-        // Store the token data
-        const tokenData = {
+        // Extract user information from the payload
+        const userInfo = {
+          name: payload.name,
+          email: payload.email,
+          picture: payload.picture,
+          sub: payload.sub
+        };
+        
+        // Store user info
+        localStorage.setItem("user_info", JSON.stringify(userInfo));
+        
+        // Store the token
+        localStorage.setItem("oauth_token", JSON.stringify({
           idToken,
           accessToken,
           provider: "google",
           expiresAt: Date.now() + (payload.exp - payload.iat) * 1000,
           sub: payload.sub,
-          email: payload.email,
-        };
-        
-        localStorage.setItem("oauth_token", JSON.stringify(tokenData));
+        }));
 
         // Clean up nonce
         localStorage.removeItem("oauth_nonce");
@@ -83,7 +91,7 @@ const OAuthCallback = () => {
       } catch (error) {
         console.error("OAuth callback error:", error);
         setStatus("Authentication failed. Please try again.");
-        toast.error("Authentication error: " + (error instanceof Error ? error.message : "Unknown error"));
+        toast.error("Authentication error. Please try again.");
       }
     };
 
