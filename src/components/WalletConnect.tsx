@@ -1,21 +1,35 @@
-
+// Update component name to IdentityConnect
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Wallet, Copy, CheckCircle } from "lucide-react";
+import { Wallet, Copy, CheckCircle, Shield } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
 const WalletConnect = () => {
-  const { connectWallet, disconnectWallet, walletAddress, isConnecting } = useAuth();
+  const { connectWallet, disconnectWallet, walletAddress, isConnecting, generateWalletFromToken } = useAuth();
   const [hasCopied, setHasCopied] = useState(false);
 
   const handleConnect = async () => {
     try {
       await connectWallet();
-      toast.success("Wallet connected successfully");
+      toast.success("Identity connected successfully");
     } catch (error) {
-      toast.error("Failed to connect wallet. Please try again.");
-      console.error("Wallet connection error:", error);
+      toast.error("Failed to connect identity. Please try again.");
+      console.error("Identity connection error:", error);
+    }
+  };
+
+  const handleDemoMode = async () => {
+    try {
+      // Generate a demo token with fixed values
+      const demoToken = "demo_jwt_token_for_testing_purposes_only";
+      const demoUserId = "demo_user_123";
+      
+      await generateWalletFromToken(demoToken, demoUserId);
+      toast.success("Demo identity created successfully");
+    } catch (error) {
+      toast.error("Failed to create demo identity. Please try again.");
+      console.error("Demo identity creation error:", error);
     }
   };
 
@@ -24,7 +38,7 @@ const WalletConnect = () => {
     
     navigator.clipboard.writeText(walletAddress);
     setHasCopied(true);
-    toast.success("Address copied to clipboard");
+    toast.success("Identity ID copied to clipboard");
     
     setTimeout(() => {
       setHasCopied(false);
@@ -34,7 +48,7 @@ const WalletConnect = () => {
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Wallet className="h-5 w-5" /> Wallet Connection
+        <Shield className="h-5 w-5" /> Zero-Knowledge Identity
       </h3>
       
       {walletAddress ? (
@@ -63,14 +77,14 @@ const WalletConnect = () => {
               className="w-full"
               onClick={disconnectWallet}
             >
-              Disconnect
+              Disconnect Identity
             </Button>
           </div>
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-muted-foreground text-sm">
-            Connect your wallet to authenticate using blockchain technology.
+            Create a secure zero-knowledge identity for blockchain authentication.
           </p>
           
           <div className="grid grid-cols-2 gap-3">
@@ -79,13 +93,13 @@ const WalletConnect = () => {
               onClick={handleConnect}
               disabled={isConnecting}
             >
-              {isConnecting ? "Connecting..." : "Connect Wallet"}
+              {isConnecting ? "Creating..." : "Create Identity"}
             </Button>
             
             <Button
               variant="outline"
               className="w-full"
-              onClick={handleConnect}
+              onClick={handleDemoMode}
               disabled={isConnecting}
             >
               Demo Mode
