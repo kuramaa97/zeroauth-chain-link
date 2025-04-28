@@ -1,22 +1,27 @@
 
 // Zero-knowledge proof utility functions (simulated)
+import { z } from "zod";
 
-// In a real application, this would use actual ZK libraries like snarkjs or circom
+// Define the proof types schema
+export const ProofTypeSchema = z.enum(["age", "credit", "identity"]);
+export type ProofType = z.infer<typeof ProofTypeSchema>;
 
-// Export the ProofType so it can be used in other files
-export type ProofType = 'age' | 'credit' | 'identity';
+// Define the proof structure
+export interface ZKProof {
+  proof: string;
+  publicSignals: string[];
+  type: ProofType;
+  timestamp: number;
+}
 
 /**
  * Simulates generating a zero-knowledge proof
- * In a real application, this would generate actual cryptographic proofs
+ * In a real application, this would use actual ZK-SNARK libraries
  */
 export const generateZKProof = async (
   walletAddress: string,
   proofType: ProofType
-): Promise<{
-  proof: string;
-  publicSignals: string[];
-}> => {
+): Promise<ZKProof> => {
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 1500));
   
@@ -28,43 +33,46 @@ export const generateZKProof = async (
       walletAddress,
       `0x${Array.from({ length: 64 }, () => 
         Math.floor(Math.random() * 16).toString(16)).join("")}`
-    ]
+    ],
+    type: proofType,
+    timestamp: Date.now()
   };
 };
 
 /**
  * Simulates verifying a zero-knowledge proof
- * In a real application, this would verify actual cryptographic proofs
  */
 export const verifyZKProof = async (
   walletAddress: string, 
   proofType: ProofType
 ): Promise<boolean> => {
-  // Generate a proof first (in a real app this might be separate)
-  const { proof, publicSignals } = await generateZKProof(walletAddress, proofType);
-  
-  // Simulate network delay for verification
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Simulate 95% success rate for verification
-  return Math.random() > 0.05;
+  try {
+    // Validate proof type
+    ProofTypeSchema.parse(proofType);
+    
+    // Generate a proof first (in a real app this might be separate)
+    const proof = await generateZKProof(walletAddress, proofType);
+    
+    // Simulate network delay for verification
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Simulate 95% success rate for verification
+    return Math.random() > 0.05;
+  } catch (error) {
+    console.error("ZK Proof verification error:", error);
+    return false;
+  }
 };
 
-/**
- * Helper functions for specific types of proofs
- */
-
-// Age verification proof (over 18)
+// Helper functions for specific proof types
 export const verifyAgeProof = async (walletAddress: string): Promise<boolean> => {
-  return verifyZKProof(walletAddress, 'age');
+  return verifyZKProof(walletAddress, "age");
 };
 
-// Credit score verification proof (above threshold)
 export const verifyCreditScoreProof = async (walletAddress: string): Promise<boolean> => {
-  return verifyZKProof(walletAddress, 'credit');
+  return verifyZKProof(walletAddress, "credit");
 };
 
-// Identity verification proof
 export const verifyIdentityProof = async (walletAddress: string): Promise<boolean> => {
-  return verifyZKProof(walletAddress, 'identity');
+  return verifyZKProof(walletAddress, "identity");
 };

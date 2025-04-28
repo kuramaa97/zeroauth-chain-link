@@ -1,10 +1,9 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { verifyZKProof, ProofType } from "@/utils/zkUtils";
+import { verifyZKProof, ProofType, ProofTypeSchema } from "@/utils/zkUtils";
 import { toast } from "sonner";
 
 const ZKProofDemo = () => {
@@ -22,8 +21,9 @@ const ZKProofDemo = () => {
     setIsVerifying(true);
     
     try {
-      // Simulating network request
-      const result = await verifyZKProof(walletAddress, activeTab);
+      const validProofType = ProofTypeSchema.parse(activeTab);
+      
+      const result = await verifyZKProof(walletAddress, validProofType);
       setVerificationResult(result);
       
       if (result) {
@@ -34,6 +34,7 @@ const ZKProofDemo = () => {
     } catch (error) {
       console.error("ZK verification error:", error);
       toast.error("An error occurred during verification");
+      setVerificationResult(false);
     } finally {
       setIsVerifying(false);
     }
@@ -43,18 +44,28 @@ const ZKProofDemo = () => {
     setVerificationResult(null);
   };
 
+  const handleTabChange = (value: string) => {
+    try {
+      const newValue = ProofTypeSchema.parse(value);
+      setActiveTab(newValue);
+      resetVerification();
+    } catch (error) {
+      console.error("Invalid proof type:", error);
+      setActiveTab("age");
+    }
+  };
+
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
         <Shield className="h-5 w-5" /> Zero-Knowledge Verification
       </h3>
       
-      <Tabs defaultValue="age" className="space-y-4" onValueChange={(value) => {
-        // Make sure the value is a valid ProofType before setting it
-        const newValue = value as ProofType;
-        setActiveTab(newValue);
-        resetVerification();
-      }}>
+      <Tabs 
+        defaultValue="age" 
+        className="space-y-4" 
+        onValueChange={handleTabChange}
+      >
         <TabsList className="grid grid-cols-3">
           <TabsTrigger value="age">Age Proof</TabsTrigger>
           <TabsTrigger value="credit">Credit Score</TabsTrigger>
