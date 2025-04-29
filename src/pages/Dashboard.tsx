@@ -12,8 +12,9 @@ const Dashboard = () => {
   const { walletAddress, isAuthenticated } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
   const [googleLoggedIn, setGoogleLoggedIn] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Add this state to force re-render
 
-  // Check for Google login independently
+  // Check for Google login and refresh when needed
   useEffect(() => {
     const checkGoogleLogin = () => {
       try {
@@ -22,6 +23,12 @@ const Dashboard = () => {
           const tokenData = JSON.parse(token);
           if (tokenData.provider === "google" && tokenData.expiresAt > Date.now()) {
             setGoogleLoggedIn(true);
+            
+            // Also check if user_info exists
+            const userInfo = localStorage.getItem('user_info');
+            if (!userInfo) {
+              console.warn("OAuth token exists but no user info found");
+            }
           }
         }
       } catch (e) {
@@ -35,11 +42,37 @@ const Dashboard = () => {
     const handleOAuthChange = (event: CustomEvent) => {
       if (event.detail && typeof event.detail.connected === 'boolean') {
         setGoogleLoggedIn(event.detail.connected);
+        // Force a refresh when OAuth status changes
+        setRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Listen for messages from popup window
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin for security
+      if (event.origin !== window.location.origin) return;
+      
+      // Handle successful OAuth
+      if (event.data?.type === "OAUTH_SUCCESS") {
+        console.log("Received OAuth success message");
+        
+        // Small delay to ensure localStorage is updated
+        setTimeout(() => {
+          checkGoogleLogin();
+          // Force refresh
+          setRefreshTrigger(prev => prev + 1);
+          window.location.reload();
+        }, 500);
       }
     };
 
     window.addEventListener("oauth-status-change", handleOAuthChange as EventListener);
-    return () => window.removeEventListener("oauth-status-change", handleOAuthChange as EventListener);
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener("oauth-status-change", handleOAuthChange as EventListener);
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   useEffect(() => {
@@ -51,6 +84,20 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  // This effect will run whenever refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      // Check if we have auth data but UI hasn't updated
+      const hasToken = !!localStorage.getItem('oauth_token');
+      const hasUserInfo = !!localStorage.getItem('user_info');
+      
+      if (hasToken && hasUserInfo && !googleLoggedIn) {
+        console.log("Auth data detected but UI not updated, forcing refresh");
+        window.location.reload();
+      }
+    }
+  }, [refreshTrigger, googleLoggedIn]);
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -58,15 +105,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
-  // Debugging information - you can remove this after fixing the issue
-  const debugAuth = {
-    isAuthenticated: isAuthenticated,
-    walletAddress: walletAddress,
-    googleLoggedIn: googleLoggedIn,
-    hasOAuthToken: !!localStorage.getItem('oauth_token'),
-    hasUserInfo: !!localStorage.getItem('user_info')
-  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -83,13 +121,7 @@ const Dashboard = () => {
             </Link>
           </div>
 
-          {/* Debug information - remove after fixing */}
-          <div className="mb-4 p-3 bg-slate-100 dark:bg-slate-800 rounded text-xs font-mono">
-            <pre>{JSON.stringify(debugAuth, null, 2)}</pre>
-          </div>
-
           <div className="space-y-6">
-            {/* Show UserDashboard if either authentication method is active */}
             {(!isAuthenticated && !googleLoggedIn) ? (
               <>
                 <Card>
@@ -106,7 +138,7 @@ const Dashboard = () => {
                 <OAuthProviders />
               </>
             ) : (
-              <UserDashboard />
+              <UserDashboard key={refreshTrigger} />
             )}
           </div>
         </div>

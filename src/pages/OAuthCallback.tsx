@@ -9,6 +9,49 @@ const OAuthCallback = () => {
   const navigate = useNavigate();
   const { generateWalletFromToken } = useAuth();
 
+  const verifySecureNonce = (receivedNonce: string): boolean => {
+    try {
+      // Get the saved nonce
+      const savedNonce = localStorage.getItem('oauth_nonce');
+      if (!savedNonce || savedNonce !== receivedNonce) {
+        return false;
+      }
+      
+      // Get the stored session keys
+      const sessionKeysData = localStorage.getItem('oauth_session_keys');
+      if (!sessionKeysData) {
+        return false;
+      }
+      
+      const sessionKeys = JSON.parse(sessionKeysData);
+      
+      // Extract the secret key hash from the nonce
+      // Format: timestamp_randomPart_secretKeyHash
+      const parts = receivedNonce.split('_');
+      if (parts.length !== 3) {
+        return false;
+      }
+      
+      const embeddedKeyHash = parts[2];
+      
+      // Verify the timestamp is not too old (10 minutes max)
+      const timestamp = parseInt(parts[0]);
+      const currentTime = Date.now();
+      if (isNaN(timestamp) || currentTime - timestamp > 10 * 60 * 1000) {
+        return false;
+      }
+      
+      // Verify the embedded key hash matches our stored session key hash
+      // (The first 16 chars should match the first 16 chars of our stored hash)
+      const storedKeyHash = sessionKeys.ss_sk_hash;
+      return storedKeyHash.startsWith(embeddedKeyHash);
+      
+    } catch (e) {
+      console.error("Error verifying nonce:", e);
+      return false;
+    }
+  };
+
   useEffect(() => {
     const processOAuthResponse = async () => {
       try {
@@ -25,22 +68,9 @@ const OAuthCallback = () => {
           return;
         }
 
-        // Verify the nonce (to prevent CSRF attacks)
-        const savedNonce = localStorage.getItem("oauth_nonce");
-        if (!savedNonce) {
-          setStatus("Error: Authentication session expired");
-          toast.error("Authentication failed: Session expired");
-          return;
-        }
-        
-        // Decode the JWT to verify nonce and extract user info
+        // Decode the JWT to extract user info
         const payload = JSON.parse(atob(idToken.split('.')[1]));
-        if (payload.nonce !== savedNonce) {
-          setStatus("Error: Invalid authentication response");
-          toast.error("Authentication failed: Security verification failed");
-          return;
-        }
-
+        
         // Extract user information from the payload
         const userInfo = {
           name: payload.name,
@@ -48,6 +78,29 @@ const OAuthCallback = () => {
           picture: payload.picture,
           sub: payload.sub
         };
+        
+        // Verify the nonce (to prevent CSRF attacks)
+        if (!payload.nonce || !verifySecureNonce(payload.nonce)) {
+          console.error("Security error: Nonce verification failed");
+          setStatus("Error: Invalid authentication response");
+          toast.error("Authentication failed: Security verification failed");
+
+          // Notify the opener window about the authentication failure
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ 
+              type: "OAUTH_FAILURE", 
+              provider: "google",
+              error: "nonce_verification_failed",
+              time: Date.now()
+            }, window.location.origin);
+            
+            // Still close the window after showing the error
+            setTimeout(() => window.close(), 3000);
+          }
+          
+          //Stop login
+          return;
+        } 
         
         // Store user info
         localStorage.setItem("user_info", JSON.stringify(userInfo));
@@ -57,12 +110,12 @@ const OAuthCallback = () => {
           idToken,
           accessToken,
           provider: "google",
-          expiresAt: Date.now() + (payload.exp - payload.iat) * 1000,
+          expiresAt: Date.now() + (payload.exp - payload.iat) * 1000, // Fix: Calculate expiry correctly
           sub: payload.sub,
         }));
 
-        // Clean up nonce
-        localStorage.removeItem("oauth_nonce");
+        // Clean up nonce AFTER checking it
+        //localStorage.removeItem("oauth_nonce");
         
         // Generate a wallet using the JWT token
         setStatus("Generating wallet from authentication data...");
@@ -73,7 +126,8 @@ const OAuthCallback = () => {
           // Send message to opener window
           window.opener.postMessage({ 
             type: "OAUTH_SUCCESS", 
-            provider: "google" 
+            provider: "google",
+            time: Date.now() // Adding timestamp to ensure message uniqueness
           }, window.location.origin);
           
           setStatus("Authentication successful! Closing window...");

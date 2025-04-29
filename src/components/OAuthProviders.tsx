@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Link2, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import * as crypto from 'crypto-js';
 
 interface OAuthProvider {
   id: string;
@@ -9,6 +10,38 @@ interface OAuthProvider {
   icon: string;
   color: string;
 }
+
+// Helper function to generate a secure session keypair
+const generateSessionKeypair = () => {
+  // Generate a cryptographically secure random session secret key (32 bytes)
+  const sessionSecretKey = crypto.lib.WordArray.random(32).toString();
+  
+  // Derive a public key from the secret key using SHA-256
+  const sessionPublicKey = crypto.SHA256(sessionSecretKey).toString();
+  
+  return {
+    ss_sk: sessionSecretKey,    // Session Secret Key
+    ss_pk: sessionPublicKey     // Session Public Key
+  };
+};
+
+// Create a nonce that embeds the session secret key
+const createSecureNonce = (secretKey: string) => {
+  // Get current timestamp for freshness
+  const timestamp = Date.now().toString();
+  
+  // Create a base for the nonce using the timestamp and a random value
+  const randomPart = crypto.lib.WordArray.random(16).toString();
+  
+  // Create a hash of the secret key to embed in the nonce
+  const secretKeyHash = crypto.SHA256(secretKey).toString().substring(0, 16);
+  
+  // Combine the elements to form the nonce
+  // Format: timestamp_randomPart_secretKeyHash
+  const nonce = `${timestamp}_${randomPart}_${secretKeyHash}`;
+  
+  return nonce;
+};
 
 const OAuthProviders = () => {
   const [authenticating, setAuthenticating] = useState<string | null>(null);
@@ -82,10 +115,26 @@ const OAuthProviders = () => {
       toast.error("Google Client ID is missing");
       return;
     }
+
+    // Generate salt
+    const salt = crypto.lib.WordArray.random(16).toString();
+    localStorage.setItem('salt', salt);
   
-    // Generate a random nonce for security
-    const nonce = Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('oauth_nonce', nonce);
+    // Generate a secure session keypair
+    const sessionKeys = generateSessionKeypair();
+    
+    // Create a nonce that embeds the session secret key
+    const secureNonce = createSecureNonce(sessionKeys.ss_sk);
+    
+    // Store the session keys and nonce securely
+    localStorage.setItem('oauth_session_keys', JSON.stringify({
+      ss_pk: sessionKeys.ss_pk,
+      // Store hashed version of secret key for verification
+      ss_sk_hash: crypto.SHA256(sessionKeys.ss_sk).toString(),
+      created_at: Date.now()
+    }));
+    
+    localStorage.setItem('oauth_nonce', secureNonce);
     
     // Save current URL for redirect back after authentication
     localStorage.setItem('oauth_redirect', window.location.href);
@@ -95,8 +144,8 @@ const OAuthProviders = () => {
       client_id: CLIENT_ID,
       redirect_uri: `${window.location.origin}/oauth-callback`,
       response_type: 'token id_token',
-      scope: 'openid email profile', // Request more user info
-      nonce: nonce,
+      scope: 'openid email profile',
+      nonce: secureNonce, // Use the secure nonce with embedded session key info
       prompt: 'consent',
     });
   
@@ -115,6 +164,8 @@ const OAuthProviders = () => {
       setTimeout(() => {
         localStorage.removeItem('oauth_token');
         localStorage.removeItem('user_info');
+        localStorage.removeItem('oauth_session_keys'); // Remove session keys
+        localStorage.removeItem('oauth_nonce'); // Remove nonce
         setConnectedProviders(prev => prev.filter(id => id !== providerId));
         setAuthenticating(null);
         toast.success(`Logged out from ${providerId} successfully`);
