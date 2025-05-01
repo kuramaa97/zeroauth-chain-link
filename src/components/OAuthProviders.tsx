@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Link2, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import * as crypto from 'crypto-js';
+import { ethers } from "ethers";
+import { F1Field, Scalar } from "ffjavascript";
+import * as circomlibjs from "circomlibjs";
 
 interface OAuthProvider {
   id: string;
@@ -9,6 +13,49 @@ interface OAuthProvider {
   icon: string;
   color: string;
 }
+
+// Helper function to generate a secure session keypair
+const generateSessionKeypair = () => {
+  // Generate a cryptographically secure random session secret key (32 bytes)
+  const wallet = ethers.Wallet.createRandom();
+
+  // Remove '0x' prefix and 04 for uncompressed key
+  const publicKey = wallet.signingKey.publicKey.slice(4); 
+  return {
+    ss_pk: publicKey,
+    ss_sk: wallet.privateKey, // Secret key (private key)
+  };
+};
+
+// Set up field parameters
+const p: string = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+const Fr = new F1Field(Scalar.fromString(p));
+
+// Create a nonce that embeds the session secret key
+const createSecureNonce = async (publicKey: string) => {  
+  // Split public key into 4 chunks of 16 bytes (32 hex chars each)
+  const pubChunks: bigint[] = [];
+  for (let i = 0; i < 4; i++) {
+    const start = i * 32;
+    const chunk = publicKey.slice(start, start + 32);
+    pubChunks.push(BigInt('0x' + chunk));
+  }
+
+  // Set parameters for Poseidon hash
+  const expiryTime = BigInt(1000000000);
+  const r = Fr.random(); // Random number for Poseidon using F1Field instance
+
+  localStorage.setItem('zk_expiry_time', expiryTime.toString());
+  localStorage.setItem('r', r.toString());
+
+  // Calculate Poseidon hash: Poseidon(pub[0],..., pub[3], expiryTime, r)
+  const poseidon = await circomlibjs.buildPoseidon();
+  const nonce = poseidon.F.toString(
+    poseidon([pubChunks[0], pubChunks[1], pubChunks[2], pubChunks[3], expiryTime, r])
+  );
+  
+  return nonce;
+};
 
 const OAuthProviders = () => {
   const [authenticating, setAuthenticating] = useState<string | null>(null);
@@ -26,17 +73,17 @@ const OAuthProviders = () => {
   // Check if user is already logged in on component mount
   useEffect(() => {
     const checkExistingSession = () => {
-      const token = localStorage.getItem('oauth_token');
+      const token = localStorage.getItem('token');
       if (token) {
         try {
           const tokenData = JSON.parse(token);
           if (tokenData.provider && tokenData.expiresAt > Date.now()) {
             setConnectedProviders([tokenData.provider]);
           } else {
-            localStorage.removeItem('oauth_token');
+            localStorage.removeItem('token');
           }
         } catch (e) {
-          localStorage.removeItem('oauth_token');
+          localStorage.removeItem('token');
         }
       }
     };
@@ -76,27 +123,43 @@ const OAuthProviders = () => {
     };
   }, []);
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!CLIENT_ID) {
       toast.error("Google Client ID is missing");
       return;
     }
+
+    // Generate salt
+    const salt = Fr.random();
+    localStorage.setItem('salt', salt);
   
-    // Generate a random nonce for security
-    const nonce = Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('oauth_nonce', nonce);
+    // Generate a secure session keypair
+    const sessionKeys = generateSessionKeypair();
+    
+    // Create a nonce that embeds the session secret key
+    const secureNonce = await createSecureNonce(sessionKeys.ss_pk);
+    
+    // Store the session keys and nonce securely
+    localStorage.setItem('session_keys', JSON.stringify({
+      ss_pk: sessionKeys.ss_pk,
+      // Store hashed version of secret key for verification
+      ss_sk_hash: crypto.SHA256(sessionKeys.ss_sk).toString(),
+      created_at: Date.now()
+    }));
+    
+    localStorage.setItem('nonce', secureNonce);
     
     // Save current URL for redirect back after authentication
-    localStorage.setItem('oauth_redirect', window.location.href);
+    localStorage.setItem('redirect', window.location.href);
   
-    // Configure OAuth parameters - using just openid scope
+    // Configure OAuth parameters - include profile and email for user info
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       redirect_uri: `${window.location.origin}/oauth-callback`,
       response_type: 'token id_token',
-      scope: 'openid', // Using only openid scope as requested
-      nonce: nonce,
+      scope: 'openid email profile',
+      nonce: secureNonce,
       prompt: 'consent',
     });
   
@@ -113,10 +176,16 @@ const OAuthProviders = () => {
       setAuthenticating(providerId);
       
       setTimeout(() => {
-        localStorage.removeItem('oauth_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user_info');
+        localStorage.removeItem('session_keys'); // Remove session keys
+        localStorage.removeItem('nonce'); // Remove nonce
         setConnectedProviders(prev => prev.filter(id => id !== providerId));
         setAuthenticating(null);
-        toast.success(`Disconnected from ${providerId} successfully`);
+        toast.success(`Logged out from ${providerId} successfully`);
+        
+        // Refresh page to clear all states
+        window.location.href = '/';
       }, 500);
       
       return;
@@ -133,11 +202,13 @@ const OAuthProviders = () => {
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Link2 className="h-5 w-5" /> OAuth Provider
+        <Link2 className="h-5 w-5" /> Authentication
       </h3>
       
       <p className="text-sm text-muted-foreground mb-4">
-        Connect with Google for secure authentication using OpenID.
+        {connectedProviders.length > 0 
+          ? "You are currently authenticated with Google." 
+          : "Sign in with Google to access your wallet and blockchain features."}
       </p>
       
       <div className="flex justify-center">
@@ -163,9 +234,9 @@ const OAuthProviders = () => {
                 {isAuthenticating ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : isConnected ? (
-                  "Connected"
+                  "Sign Out"
                 ) : (
-                  <ExternalLink className="h-3 w-3" />
+                  "Sign In"
                 )}
               </span>
             </Button>

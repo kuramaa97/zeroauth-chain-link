@@ -2,12 +2,46 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/context/AuthContext"; // Import the auth context
+import { useAuth } from "@/context/AuthContext";
 
 const OAuthCallback = () => {
   const [status, setStatus] = useState("Processing authentication response...");
   const navigate = useNavigate();
-  const { generateWalletFromToken } = useAuth(); // Get the function from auth context
+  const { generateWalletFromToken } = useAuth();
+
+  const verifySecureNonce = (receivedNonce: string): boolean => {
+    try {
+      // Get the saved nonce
+      const savedNonce = localStorage.getItem('nonce');
+      if (!savedNonce || savedNonce !== receivedNonce) {
+        console.error("Nonce mismatch:", savedNonce, receivedNonce);
+        return false;
+      }
+      
+      // Get the stored session keys
+      const sessionKeysData = localStorage.getItem('session_keys');
+      if (!sessionKeysData) {
+        console.error("No session keys found");
+        return false;
+      }
+      
+      // Check if the nonce was created recently enough
+      const sessionKeys = JSON.parse(sessionKeysData);
+      const createdAt = sessionKeys.created_at || 0;
+      const currentTime = Date.now();
+      
+      // Verify the session wasn't created too long ago (10 minutes max)
+      if (currentTime - createdAt > 10 * 60 * 1000) {
+        console.error("Session key too old");
+        return false;
+      }
+      
+      return true;
+    } catch (e) {
+      console.error("Error verifying nonce:", e);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const processOAuthResponse = async () => {
@@ -25,36 +59,54 @@ const OAuthCallback = () => {
           return;
         }
 
-        // Verify the nonce (to prevent CSRF attacks)
-        const savedNonce = localStorage.getItem("oauth_nonce");
-        if (!savedNonce) {
-          setStatus("Error: Authentication session expired");
-          toast.error("Authentication failed: Session expired");
-          return;
-        }
-        
-        // Decode the JWT to verify nonce and extract user info
+        // Decode the JWT to extract user info
         const payload = JSON.parse(atob(idToken.split('.')[1]));
-        if (payload.nonce !== savedNonce) {
+        
+        // Extract user information from the payload
+        const userInfo = {
+          name: payload.name,
+          email: payload.email,
+          picture: payload.picture,
+          sub: payload.sub
+        };
+        
+        // Verify the nonce (to prevent CSRF attacks)
+        if (!payload.nonce || !verifySecureNonce(payload.nonce)) {
+          console.error("Security error: Nonce verification failed");
           setStatus("Error: Invalid authentication response");
           toast.error("Authentication failed: Security verification failed");
-          return;
-        }
 
-        // Store the token data
-        const tokenData = {
+          // Notify the opener window about the authentication failure
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ 
+              type: "OAUTH_FAILURE", 
+              provider: "google",
+              error: "nonce_verification_failed",
+              time: Date.now()
+            }, window.location.origin);
+            
+            // Still close the window after showing the error
+            setTimeout(() => window.close(), 3000);
+          }
+          
+          //Stop login
+          return;
+        } 
+        
+        // Store user info
+        localStorage.setItem("user_info", JSON.stringify(userInfo));
+        
+        // Store the token
+        localStorage.setItem("token", JSON.stringify({
           idToken,
           accessToken,
           provider: "google",
-          expiresAt: Date.now() + (payload.exp - payload.iat) * 1000,
+          expiresAt: Date.now() + (payload.exp - payload.iat) * 1000, // Fix: Calculate expiry correctly
           sub: payload.sub,
-          email: payload.email,
-        };
-        
-        localStorage.setItem("oauth_token", JSON.stringify(tokenData));
+        }));
 
-        // Clean up nonce
-        localStorage.removeItem("oauth_nonce");
+        // Clean up nonce AFTER checking it
+        //localStorage.removeItem("nonce");
         
         // Generate a wallet using the JWT token
         setStatus("Generating wallet from authentication data...");
@@ -65,7 +117,8 @@ const OAuthCallback = () => {
           // Send message to opener window
           window.opener.postMessage({ 
             type: "OAUTH_SUCCESS", 
-            provider: "google" 
+            provider: "google",
+            time: Date.now() // Adding timestamp to ensure message uniqueness
           }, window.location.origin);
           
           setStatus("Authentication successful! Closing window...");
@@ -74,8 +127,8 @@ const OAuthCallback = () => {
           setTimeout(() => window.close(), 1500);
         } else {
           // If no opener (user opened directly), redirect to stored URL
-          const redirectUrl = localStorage.getItem("oauth_redirect") || "/dashboard";
-          localStorage.removeItem("oauth_redirect");
+          const redirectUrl = localStorage.getItem("redirect") || "/dashboard";
+          localStorage.removeItem("redirect");
           
           setStatus("Authentication successful! Redirecting...");
           setTimeout(() => navigate(redirectUrl), 1500);
@@ -83,7 +136,7 @@ const OAuthCallback = () => {
       } catch (error) {
         console.error("OAuth callback error:", error);
         setStatus("Authentication failed. Please try again.");
-        toast.error("Authentication error: " + (error instanceof Error ? error.message : "Unknown error"));
+        toast.error("Authentication error. Please try again.");
       }
     };
 
