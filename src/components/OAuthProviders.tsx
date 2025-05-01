@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Link2, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import * as crypto from 'crypto-js';
+import { ethers } from "ethers";
+import { F1Field, Scalar } from "ffjavascript";
+import * as circomlibjs from "circomlibjs";
 
 interface OAuthProvider {
   id: string;
@@ -14,31 +17,42 @@ interface OAuthProvider {
 // Helper function to generate a secure session keypair
 const generateSessionKeypair = () => {
   // Generate a cryptographically secure random session secret key (32 bytes)
-  const sessionSecretKey = crypto.lib.WordArray.random(32).toString();
-  
-  // Derive a public key from the secret key using SHA-256
-  const sessionPublicKey = crypto.SHA256(sessionSecretKey).toString();
-  
+  const wallet = ethers.Wallet.createRandom();
+
+  // Remove '0x' prefix and 04 for uncompressed key
+  const publicKey = wallet.signingKey.publicKey.slice(4); 
   return {
-    ss_sk: sessionSecretKey,    // Session Secret Key
-    ss_pk: sessionPublicKey     // Session Public Key
+    ss_pk: publicKey,
+    ss_sk: wallet.privateKey, // Secret key (private key)
   };
 };
 
+// Set up field parameters
+const p: string = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+const Fr = new F1Field(Scalar.fromString(p));
+
 // Create a nonce that embeds the session secret key
-const createSecureNonce = (secretKey: string) => {
-  // Get current timestamp for freshness
-  const timestamp = Date.now().toString();
-  
-  // Create a base for the nonce using the timestamp and a random value
-  const randomPart = crypto.lib.WordArray.random(16).toString();
-  
-  // Create a hash of the secret key to embed in the nonce
-  const secretKeyHash = crypto.SHA256(secretKey).toString().substring(0, 16);
-  
-  // Combine the elements to form the nonce
-  // Format: timestamp_randomPart_secretKeyHash
-  const nonce = `${timestamp}_${randomPart}_${secretKeyHash}`;
+const createSecureNonce = async (publicKey: string) => {  
+  // Split public key into 4 chunks of 16 bytes (32 hex chars each)
+  const pubChunks: bigint[] = [];
+  for (let i = 0; i < 4; i++) {
+    const start = i * 32;
+    const chunk = publicKey.slice(start, start + 32);
+    pubChunks.push(BigInt('0x' + chunk));
+  }
+
+  // Set parameters for Poseidon hash
+  const expiryTime = BigInt(1000000000);
+  const r = Fr.random(); // Random number for Poseidon using F1Field instance
+
+  localStorage.setItem('zk_expiry_time', expiryTime.toString());
+  localStorage.setItem('r', r.toString());
+
+  // Calculate Poseidon hash: Poseidon(pub[0],..., pub[3], expiryTime, r)
+  const poseidon = await circomlibjs.buildPoseidon();
+  const nonce = poseidon.F.toString(
+    poseidon([pubChunks[0], pubChunks[1], pubChunks[2], pubChunks[3], expiryTime, r])
+  );
   
   return nonce;
 };
@@ -59,17 +73,17 @@ const OAuthProviders = () => {
   // Check if user is already logged in on component mount
   useEffect(() => {
     const checkExistingSession = () => {
-      const token = localStorage.getItem('oauth_token');
+      const token = localStorage.getItem('token');
       if (token) {
         try {
           const tokenData = JSON.parse(token);
           if (tokenData.provider && tokenData.expiresAt > Date.now()) {
             setConnectedProviders([tokenData.provider]);
           } else {
-            localStorage.removeItem('oauth_token');
+            localStorage.removeItem('token');
           }
         } catch (e) {
-          localStorage.removeItem('oauth_token');
+          localStorage.removeItem('token');
         }
       }
     };
@@ -109,7 +123,7 @@ const OAuthProviders = () => {
     };
   }, []);
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!CLIENT_ID) {
       toast.error("Google Client ID is missing");
@@ -117,27 +131,27 @@ const OAuthProviders = () => {
     }
 
     // Generate salt
-    const salt = crypto.lib.WordArray.random(16).toString();
+    const salt = Fr.random();
     localStorage.setItem('salt', salt);
   
     // Generate a secure session keypair
     const sessionKeys = generateSessionKeypair();
     
     // Create a nonce that embeds the session secret key
-    const secureNonce = createSecureNonce(sessionKeys.ss_sk);
+    const secureNonce = await createSecureNonce(sessionKeys.ss_pk);
     
     // Store the session keys and nonce securely
-    localStorage.setItem('oauth_session_keys', JSON.stringify({
+    localStorage.setItem('session_keys', JSON.stringify({
       ss_pk: sessionKeys.ss_pk,
       // Store hashed version of secret key for verification
       ss_sk_hash: crypto.SHA256(sessionKeys.ss_sk).toString(),
       created_at: Date.now()
     }));
     
-    localStorage.setItem('oauth_nonce', secureNonce);
+    localStorage.setItem('nonce', secureNonce);
     
     // Save current URL for redirect back after authentication
-    localStorage.setItem('oauth_redirect', window.location.href);
+    localStorage.setItem('redirect', window.location.href);
   
     // Configure OAuth parameters - include profile and email for user info
     const params = new URLSearchParams({
@@ -145,7 +159,7 @@ const OAuthProviders = () => {
       redirect_uri: `${window.location.origin}/oauth-callback`,
       response_type: 'token id_token',
       scope: 'openid email profile',
-      nonce: secureNonce, // Use the secure nonce with embedded session key info
+      nonce: secureNonce,
       prompt: 'consent',
     });
   
@@ -162,10 +176,10 @@ const OAuthProviders = () => {
       setAuthenticating(providerId);
       
       setTimeout(() => {
-        localStorage.removeItem('oauth_token');
+        localStorage.removeItem('token');
         localStorage.removeItem('user_info');
-        localStorage.removeItem('oauth_session_keys'); // Remove session keys
-        localStorage.removeItem('oauth_nonce'); // Remove nonce
+        localStorage.removeItem('session_keys'); // Remove session keys
+        localStorage.removeItem('nonce'); // Remove nonce
         setConnectedProviders(prev => prev.filter(id => id !== providerId));
         setAuthenticating(null);
         toast.success(`Logged out from ${providerId} successfully`);

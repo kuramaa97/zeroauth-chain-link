@@ -12,40 +12,31 @@ const OAuthCallback = () => {
   const verifySecureNonce = (receivedNonce: string): boolean => {
     try {
       // Get the saved nonce
-      const savedNonce = localStorage.getItem('oauth_nonce');
+      const savedNonce = localStorage.getItem('nonce');
       if (!savedNonce || savedNonce !== receivedNonce) {
+        console.error("Nonce mismatch:", savedNonce, receivedNonce);
         return false;
       }
       
       // Get the stored session keys
-      const sessionKeysData = localStorage.getItem('oauth_session_keys');
+      const sessionKeysData = localStorage.getItem('session_keys');
       if (!sessionKeysData) {
+        console.error("No session keys found");
         return false;
       }
       
+      // Check if the nonce was created recently enough
       const sessionKeys = JSON.parse(sessionKeysData);
-      
-      // Extract the secret key hash from the nonce
-      // Format: timestamp_randomPart_secretKeyHash
-      const parts = receivedNonce.split('_');
-      if (parts.length !== 3) {
-        return false;
-      }
-      
-      const embeddedKeyHash = parts[2];
-      
-      // Verify the timestamp is not too old (10 minutes max)
-      const timestamp = parseInt(parts[0]);
+      const createdAt = sessionKeys.created_at || 0;
       const currentTime = Date.now();
-      if (isNaN(timestamp) || currentTime - timestamp > 10 * 60 * 1000) {
+      
+      // Verify the session wasn't created too long ago (10 minutes max)
+      if (currentTime - createdAt > 10 * 60 * 1000) {
+        console.error("Session key too old");
         return false;
       }
       
-      // Verify the embedded key hash matches our stored session key hash
-      // (The first 16 chars should match the first 16 chars of our stored hash)
-      const storedKeyHash = sessionKeys.ss_sk_hash;
-      return storedKeyHash.startsWith(embeddedKeyHash);
-      
+      return true;
     } catch (e) {
       console.error("Error verifying nonce:", e);
       return false;
@@ -106,7 +97,7 @@ const OAuthCallback = () => {
         localStorage.setItem("user_info", JSON.stringify(userInfo));
         
         // Store the token
-        localStorage.setItem("oauth_token", JSON.stringify({
+        localStorage.setItem("token", JSON.stringify({
           idToken,
           accessToken,
           provider: "google",
@@ -115,7 +106,7 @@ const OAuthCallback = () => {
         }));
 
         // Clean up nonce AFTER checking it
-        //localStorage.removeItem("oauth_nonce");
+        //localStorage.removeItem("nonce");
         
         // Generate a wallet using the JWT token
         setStatus("Generating wallet from authentication data...");
@@ -136,8 +127,8 @@ const OAuthCallback = () => {
           setTimeout(() => window.close(), 1500);
         } else {
           // If no opener (user opened directly), redirect to stored URL
-          const redirectUrl = localStorage.getItem("oauth_redirect") || "/dashboard";
-          localStorage.removeItem("oauth_redirect");
+          const redirectUrl = localStorage.getItem("redirect") || "/dashboard";
+          localStorage.removeItem("redirect");
           
           setStatus("Authentication successful! Redirecting...");
           setTimeout(() => navigate(redirectUrl), 1500);

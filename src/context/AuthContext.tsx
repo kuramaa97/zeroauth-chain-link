@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("walletAddress");
     localStorage.removeItem("wallet_address");
     localStorage.removeItem("zkp_credentials");
-    localStorage.removeItem("oauth_token");
+    localStorage.removeItem("token");
     toast.success("Identity disconnected");
   };
   

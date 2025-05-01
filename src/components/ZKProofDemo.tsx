@@ -1,14 +1,28 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Shield, CheckCircle2, XCircle } from "lucide-react";
+import { Shield, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { verifyZKProof } from "@/utils/zkUtils";
+import { generateZKProof, prepareCircuitInput } from "@/utils/zkUtils";
 import { toast } from "sonner";
+
+interface ProofData {
+  proof: {
+    pi_a: string[];
+    pi_b: string[][];
+    pi_c: string[];
+    protocol: string;
+  };
+  publicSignals: string[];
+  expiresAt: number;
+  createdAt: number;
+  type: string;
+}
 
 const ZKProofDemo = () => {
   const { walletAddress } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<boolean | null>(null);
+  const [proofData, setProofData] = useState<ProofData | null>(null);
   
   // Notify the dashboard when the proof verification status changes
   useEffect(() => {
@@ -17,6 +31,25 @@ const ZKProofDemo = () => {
     });
     window.dispatchEvent(event);
   }, [verificationResult]);
+  
+  // Load existing proof from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedProofStr = localStorage.getItem("zk_proof");
+      if (savedProofStr) {
+        const savedProof = JSON.parse(savedProofStr) as ProofData;
+        if (savedProof.expiresAt > Date.now()) {
+          setProofData(savedProof);
+          setVerificationResult(true);
+        } else {
+          // Proof has expired
+          localStorage.removeItem("zk_proof");
+        }
+      }
+    } catch (error) {
+      console.error("Error loading saved proof:", error);
+    }
+  }, []);
   
   const handleProofVerification = async () => {
     if (!walletAddress) {
@@ -27,17 +60,51 @@ const ZKProofDemo = () => {
     setIsVerifying(true);
     
     try {
-      const result = await verifyZKProof(walletAddress, "identity");
-      setVerificationResult(result);
+      // Get token from localStorage
+      const tokenData = localStorage.getItem("token");
+      if (!tokenData) {
+        throw new Error("Authentication token not found. Please login first");
+      }
       
-      if (result) {
-        toast.success(`Zero-knowledge identity proof verified successfully`);
+      const { idToken } = JSON.parse(tokenData);
+      const userInfoData = localStorage.getItem("user_info");
+      if (!userInfoData) {
+        throw new Error("User information not found");
+      }
+      
+      const expiryTime = localStorage.getItem("zk_expiry_time");
+      const salt = localStorage.getItem("salt");
+      const r = localStorage.getItem("r");
+
+      if (!expiryTime || !salt || !r) {
+        throw new Error("Missing ZK parameters. Please authenticate first.");
+      }
+
+      // Call the utility function to generate and verify proof
+      const input = await prepareCircuitInput(
+        idToken, 
+        expiryTime,
+        salt,
+        r
+      );
+      console.log("ZK proof input:", input);
+
+      const { success, proof, error } = await generateZKProof(input);
+      
+      setVerificationResult(success);
+      
+      if (success && proof) {
+        setProofData(proof);
+        
+        // Store proof in localStorage for later use
+        localStorage.setItem("zk_proof", JSON.stringify(proof));
+        toast.success("Zero-knowledge identity proof verified successfully");
       } else {
-        toast.error(`Failed to verify zero-knowledge identity proof`);
+        toast.error(error || "Failed to verify zero-knowledge identity proof");
       }
     } catch (error) {
       console.error("ZK verification error:", error);
-      toast.error("An error occurred during verification");
+      toast.error(error instanceof Error ? error.message : "An error occurred during verification");
       setVerificationResult(false);
     } finally {
       setIsVerifying(false);
@@ -46,6 +113,24 @@ const ZKProofDemo = () => {
   
   const resetVerification = () => {
     setVerificationResult(null);
+    setProofData(null);
+    localStorage.removeItem("zk_proof");
+  };
+  
+  const formatTimestamp = (timestamp: number) => {
+    return new Date(timestamp).toLocaleString();
+  };
+  
+  const calculateExpiryTime = (expiryTimestamp: number) => {
+    const now = Date.now();
+    const diff = expiryTimestamp - now;
+    
+    if (diff < 0) return "Expired";
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return `${hours}h ${minutes}m remaining`;
   };
 
   return (
@@ -65,40 +150,117 @@ const ZKProofDemo = () => {
   );
   
   function renderVerificationUI() {
-    if (verificationResult === true) {
+    if (verificationResult === true && proofData) {
       return (
-        <div className="bg-green-950/30 border border-green-600/30 rounded-md p-4 flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
-          <div>
-            <p className="font-medium">Verification Successful</p>
-            <p className="text-sm text-muted-foreground">
-              Zero-knowledge proof validated without revealing your data
-            </p>
+        <>
+          <div className="bg-green-950/30 border border-green-600/30 rounded-md p-4 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500" />
+            <div className="w-full">
+              <div className="flex justify-between items-center w-full">
+                <p className="font-medium">Verification Successful</p>
+                <span className="text-xs text-green-500">{calculateExpiryTime(proofData.expiresAt)}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Zero-knowledge proof validated without revealing your data
+              </p>
+            </div>
           </div>
-        </div>
+          
+          <div className="border border-border rounded-md p-4">
+            <h4 className="text-sm font-medium mb-3">Proof Details</h4>
+            
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-[120px_1fr] gap-2">
+                <span className="text-muted-foreground">Type:</span>
+                <span>Identity Verification</span>
+              </div>
+              
+              <div className="grid grid-cols-[120px_1fr] gap-2">
+                <span className="text-muted-foreground">Created:</span>
+                <span>{formatTimestamp(proofData.createdAt)}</span>
+              </div>
+              
+              <div className="grid grid-cols-[120px_1fr] gap-2">
+                <span className="text-muted-foreground">Expires:</span>
+                <span>{formatTimestamp(proofData.expiresAt)}</span>
+              </div>
+              
+              {proofData.publicSignals && (
+                <div className="grid grid-cols-[120px_1fr] gap-2">
+                  <span className="text-muted-foreground">Public Signals:</span>
+                  <span className="font-mono text-xs truncate">
+                    {proofData.publicSignals[0] ? `0x${proofData.publicSignals[0].substring(0, 12)}...` : 'N/A'}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-4 pt-3 border-t border-border flex justify-between">
+              <Button variant="outline" size="sm" onClick={resetVerification}>
+                Reset Proof
+              </Button>
+              
+              <Button 
+                size="sm"
+                onClick={handleProofVerification} 
+                disabled={isVerifying}
+              >
+                {isVerifying ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" /> Regenerating...
+                  </>
+                ) : "Generate New Proof"}
+              </Button>
+            </div>
+          </div>
+        </>
       );
     } else if (verificationResult === false) {
       return (
-        <div className="bg-red-950/30 border border-red-600/30 rounded-md p-4 flex items-center gap-3">
-          <XCircle className="h-5 w-5 text-red-500" />
-          <div>
-            <p className="font-medium">Verification Failed</p>
-            <p className="text-sm text-muted-foreground">
-              Unable to verify the zero-knowledge proof
-            </p>
+        <div className="bg-red-950/30 border border-red-600/30 rounded-md p-4 flex flex-col">
+          <div className="flex items-center gap-3">
+            <XCircle className="h-5 w-5 text-red-500" />
+            <div>
+              <p className="font-medium">Verification Failed</p>
+              <p className="text-sm text-muted-foreground">
+                Unable to verify the zero-knowledge proof
+              </p>
+            </div>
           </div>
+          
+          <Button 
+            onClick={handleProofVerification}
+            disabled={isVerifying}
+            variant="outline"
+            className="ml-auto mt-3"
+            size="sm"
+          >
+            {isVerifying ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin mr-1" /> Trying...
+              </>
+            ) : "Try Again"}
+          </Button>
         </div>
       );
     }
     
     return (
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center py-4 gap-3">
+        <p className="text-center text-sm text-muted-foreground">
+          Generate a cryptographic proof of your identity without revealing your personal data
+        </p>
+        
         <Button 
           onClick={handleProofVerification} 
           disabled={!walletAddress || isVerifying}
           className="min-w-[200px]"
         >
-          {isVerifying ? "Verifying..." : "Generate & Verify Proof"}
+          {isVerifying ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Generating Proof...
+            </>
+          ) : "Generate & Verify Proof"}
         </Button>
       </div>
     );

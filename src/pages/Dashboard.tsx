@@ -18,7 +18,7 @@ const Dashboard = () => {
   useEffect(() => {
     const checkGoogleLogin = () => {
       try {
-        const token = localStorage.getItem('oauth_token');
+        const token = localStorage.getItem('token');
         if (token) {
           const tokenData = JSON.parse(token);
           if (tokenData.provider === "google" && tokenData.expiresAt > Date.now()) {
@@ -88,7 +88,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (refreshTrigger > 0) {
       // Check if we have auth data but UI hasn't updated
-      const hasToken = !!localStorage.getItem('oauth_token');
+      const hasToken = !!localStorage.getItem('token');
       const hasUserInfo = !!localStorage.getItem('user_info');
       
       if (hasToken && hasUserInfo && !googleLoggedIn) {
