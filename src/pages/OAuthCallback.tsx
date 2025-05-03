@@ -59,8 +59,28 @@ const OAuthCallback = () => {
           return;
         }
 
+        const decodeJwtPayload = (token) => {
+          try {
+            // JWT tokens are split by dots - get the middle (payload) part
+            const base64Url = token.split('.')[1];
+            // Convert base64url to base64
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            // Decode and parse
+            const jsonPayload = decodeURIComponent(
+              atob(base64)
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+            );
+            return JSON.parse(jsonPayload);
+          } catch (error) {
+            console.error("Error decoding JWT:", error);
+            throw new Error("Invalid token format");
+          }
+        };
+
         // Decode the JWT to extract user info
-        const payload = JSON.parse(atob(idToken.split('.')[1]));
+        const payload = decodeJwtPayload(idToken);
         
         // Extract user information from the payload
         const userInfo = {

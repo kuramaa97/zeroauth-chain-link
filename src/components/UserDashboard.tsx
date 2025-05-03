@@ -30,6 +30,13 @@ const UserDashboard = () => {
         const storedInfo = localStorage.getItem('user_info');
         if (storedInfo) {
           const parsedInfo = JSON.parse(storedInfo);
+          if (parsedInfo.name) {
+            try {
+              parsedInfo.name = decodeURIComponent(escape(parsedInfo.name));
+            } catch (e) {
+              console.warn("Could not decode name, using as is");
+            }
+          }
           setUserInfo(parsedInfo);
         }
       } catch (e) {

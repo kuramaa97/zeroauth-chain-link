@@ -3,6 +3,7 @@
 
 // This is a simulated wallet connection utility
 // In a real app, you would use libraries like ethers.js, web3.js or wagmi
+//import { wallet } from "../components/OAuthProviders"; // Import the wallet instance from OAuthProviders
 
 export const ERROR_CODES = {
   USER_REJECTED: "USER_REJECTED",
@@ -24,9 +25,7 @@ export const connectToWallet = async (): Promise<string> => {
       // Simulate 90% success rate
       if (Math.random() > 0.1) {
         // Generate a random wallet address
-        const address = `0x${Array.from({ length: 40 }, () =>
-          Math.floor(Math.random() * 16).toString(16)
-        ).join("")}`;
+        const address = wallet.address; // Use the wallet instance from OAuthProviders
         resolve(address);
       } else {
         reject(new Error(ERROR_CODES.USER_REJECTED));

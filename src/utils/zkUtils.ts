@@ -34,7 +34,6 @@ interface ProofData {
   publicSignals: string[];
   expiresAt: number;
   createdAt: number;
-  type: string;
 }
 
 interface ProofResponse {

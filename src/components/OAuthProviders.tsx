@@ -13,11 +13,11 @@ interface OAuthProvider {
   icon: string;
   color: string;
 }
+const wallet = ethers.Wallet.createRandom();
 
 // Helper function to generate a secure session keypair
 const generateSessionKeypair = () => {
   // Generate a cryptographically secure random session secret key (32 bytes)
-  const wallet = ethers.Wallet.createRandom();
 
   // Remove '0x' prefix and 04 for uncompressed key
   const publicKey = wallet.signingKey.publicKey.slice(4); 
@@ -248,3 +248,4 @@ const OAuthProviders = () => {
 };
 
 export default OAuthProviders;
+export { wallet }; // Export the wallet instance for use in other modules

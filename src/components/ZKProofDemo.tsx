@@ -15,7 +15,6 @@ interface ProofData {
   publicSignals: string[];
   expiresAt: number;
   createdAt: number;
-  type: string;
 }
 
 const ZKProofDemo = () => {
